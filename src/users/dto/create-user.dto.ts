@@ -1,0 +1,36 @@
+import { IsEmail, IsEnum, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import { AuthProvider } from '@prisma/client';
+
+export class CreateUserDto {
+  @IsEmail()
+  email!: string;
+
+  @IsOptional()
+  @IsPhoneNumber('AR', { message: 'Ingrese un número de teléfono válido para Argentina o incluya el código de país.' })
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  firstName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(120)
+  externalAuthId?: string;
+
+  @IsOptional()
+  @IsEnum(AuthProvider)
+  authProvider?: AuthProvider;
+}
