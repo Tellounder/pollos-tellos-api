@@ -59,6 +59,7 @@ model User {
   lastName       String?
   displayName    String?
   avatarKey      String?
+  termsAcceptedAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   lastLoginAt    DateTime?

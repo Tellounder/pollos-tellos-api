@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsISO8601, IsOptional, IsPhoneNumber, IsString, MaxLength, MinLength } from 'class-validator';
 import { AuthProvider } from '@prisma/client';
 
 export class CreateUserDto {
@@ -33,4 +33,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(AuthProvider)
   authProvider?: AuthProvider;
+
+  @IsOptional()
+  @IsISO8601()
+  termsAcceptedAt?: string;
 }

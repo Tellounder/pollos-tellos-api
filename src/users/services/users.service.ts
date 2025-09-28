@@ -17,7 +17,7 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-    const { email, externalAuthId, ...rest } = createUserDto;
+    const { email, externalAuthId, termsAcceptedAt, ...rest } = createUserDto;
 
     return this.prisma.user.upsert({
       where: { email },
@@ -29,6 +29,7 @@ export class UsersService {
         firstName: rest.firstName,
         lastName: rest.lastName,
         displayName: rest.displayName,
+        termsAcceptedAt: termsAcceptedAt ? new Date(termsAcceptedAt) : undefined,
       },
       update: {
         externalAuthId: externalAuthId ?? undefined,
@@ -38,6 +39,7 @@ export class UsersService {
         lastName: rest.lastName ?? undefined,
         displayName: rest.displayName ?? undefined,
         isActive: true,
+        termsAcceptedAt: termsAcceptedAt ? new Date(termsAcceptedAt) : undefined,
       },
     });
   }
