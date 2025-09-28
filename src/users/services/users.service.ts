@@ -190,7 +190,8 @@ export class UsersService {
     await this.ensureExists(id);
     await this.prisma.purchase.create({ data: { userId: id } });
     const totalPurchases = await this.prisma.purchase.count({ where: { userId: id } });
-    const unlockBonus = totalPurchases % 3 === 0;
+    const modulo = totalPurchases % 7;
+    const unlockBonus = modulo === 0 || modulo === 3;
 
     return {
       totalPurchases,
