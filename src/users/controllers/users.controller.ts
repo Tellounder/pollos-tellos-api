@@ -55,6 +55,11 @@ export class UsersController {
     return this.usersService.updateProfile(id, updateProfileDto);
   }
 
+  @Post(':id/purchases')
+  registerPurchase(@Param('id') id: string) {
+    return this.usersService.registerPurchase(id);
+  }
+
   @Delete(':id')
   deactivate(@Param('id') id: string) {
     return this.usersService.deactivate(id);

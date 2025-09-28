@@ -75,7 +75,15 @@ model User {
   shareEvents          ReferralShare[]
   whatsappEvents       WhatsappInteraction[]
   loyaltyEvents        LoyaltyEvent[]
+  purchases            Purchase[]
   inventoryCounts      InventoryCount[]      @relation("InventoryCounter")
+}
+
+model Purchase {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
 }
 
 model Address {

@@ -186,6 +186,18 @@ export class UsersService {
     });
   }
 
+  async registerPurchase(id: string) {
+    await this.ensureExists(id);
+    await this.prisma.purchase.create({ data: { userId: id } });
+    const totalPurchases = await this.prisma.purchase.count({ where: { userId: id } });
+    const unlockBonus = totalPurchases % 3 === 0;
+
+    return {
+      totalPurchases,
+      unlockBonus,
+    };
+  }
+
   async getEngagementSnapshot(id: string) {
     await this.ensureExists(id);
 
