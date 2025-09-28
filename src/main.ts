@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
+import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -15,6 +16,17 @@ async function bootstrap() {
       },
     }),
   );
+  const corsOptions: CorsOptions = {
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://pollostellos.web.app',
+      'https://pollos-tellos-api.onrender.com',
+    ],
+    credentials: true,
+  };
+  app.enableCors(corsOptions);
+
   const prismaService = app.get(PrismaService);
   await prismaService.enableShutdownHooks(app);
 
