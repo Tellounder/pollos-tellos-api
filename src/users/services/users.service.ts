@@ -134,18 +134,22 @@ export class UsersService {
 
     const { address, ...userData } = payload;
 
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: userData,
-    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id },
+        data: userData,
+      });
 
-    if (address) {
-      const existingPrimary = await this.prisma.address.findFirst({
+      if (!address) {
+        return;
+      }
+
+      const existingPrimary = await tx.address.findFirst({
         where: { userId: id, isPrimary: true },
       });
 
       if (existingPrimary) {
-        await this.prisma.address.update({
+        await tx.address.update({
           where: { id: existingPrimary.id },
           data: {
             label: address.label ?? existingPrimary.label,
@@ -158,22 +162,23 @@ export class UsersService {
             isPrimary: true,
           },
         });
-      } else {
-        await this.prisma.address.create({
-          data: {
-            userId: id,
-            label: address.label ?? 'Principal',
-            line1: address.line1,
-            line2: address.line2,
-            city: address.city ?? 'Sin especificar',
-            province: address.province,
-            postalCode: address.postalCode,
-            notes: address.notes,
-            isPrimary: true,
-          },
-        });
+        return;
       }
-    }
+
+      await tx.address.create({
+        data: {
+          userId: id,
+          label: address.label ?? 'Principal',
+          line1: address.line1,
+          line2: address.line2,
+          city: address.city ?? 'Sin especificar',
+          province: address.province,
+          postalCode: address.postalCode,
+          notes: address.notes,
+          isPrimary: true,
+        },
+      });
+    });
 
     return this.findOne(id);
   }
@@ -188,15 +193,17 @@ export class UsersService {
 
   async registerPurchase(id: string) {
     await this.ensureExists(id);
-    await this.prisma.purchase.create({ data: { userId: id } });
-    const totalPurchases = await this.prisma.purchase.count({ where: { userId: id } });
-    const modulo = totalPurchases % 7;
-    const unlockBonus = modulo === 0 || modulo === 3;
+    return this.prisma.$transaction(async (tx) => {
+      await tx.purchase.create({ data: { userId: id } });
+      const totalPurchases = await tx.purchase.count({ where: { userId: id } });
+      const modulo = totalPurchases % 7;
+      const unlockBonus = modulo === 0 || modulo === 3;
 
-    return {
-      totalPurchases,
-      unlockBonus,
-    };
+      return {
+        totalPurchases,
+        unlockBonus,
+      };
+    });
   }
 
   async getEngagementSnapshot(id: string) {
@@ -243,12 +250,12 @@ export class UsersService {
 
     return {
       monthlyOrders,
-      lifetimeOrders: lifetimeOrders._count,
+      lifetimeOrders: lifetimeOrders._count ?? 0,
       lifetimeNetSales: lifetimeOrders._sum.totalNet?.toString() ?? '0',
-      lastOrderAt: lifetimeOrders._max.placedAt,
+      lastOrderAt: lifetimeOrders._max.placedAt ?? null,
       shareEvents,
       loyaltyEvents,
-      referralProfile,
+      referralProfile: referralProfile ?? null,
       discountUsage,
       qualifiesForBonus: monthlyOrders >= 3,
     };

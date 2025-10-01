@@ -14,10 +14,13 @@ Backend monolito construido con [NestJS](https://nestjs.com/) y [Prisma](https:/
 - `prisma/` contiene el esquema relacional completo (`schema.prisma`).
 
 ## Configuración rápida
-1. Crear y exportar la variable de entorno `DATABASE_URL` (o editar `.env`). Ejemplo:
+1. Crear y exportar las variables de entorno necesarias (o editar `.env`). Ejemplo:
    ```env
    DATABASE_URL="postgresql://usuario:password@localhost:5432/pollos_tellos?schema=public"
+   API_KEY="tu-clave-super-secreta"
    ```
+   Podés definir varias claves separadas por comas con `API_KEYS="clave1,clave2"`. Las peticiones al backend deben incluir
+   la cabecera `x-api-key` o un `Authorization: Bearer <clave>` válido.
 2. Instalar dependencias:
    ```bash
    npm install

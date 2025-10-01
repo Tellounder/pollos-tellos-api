@@ -6,7 +6,9 @@ export class CreateUserDto {
   email!: string;
 
   @IsOptional()
-  @IsPhoneNumber('AR', { message: 'Ingrese un número de teléfono válido para Argentina o incluya el código de país.' })
+  @IsPhoneNumber(undefined, {
+    message: 'Ingrese un número de teléfono válido (incluya el código de país si corresponde).',
+  })
   phone?: string;
 
   @IsOptional()
