@@ -21,7 +21,8 @@ async function bootstrap() {
       'http://localhost:5173',
       'http://localhost:3000',
       'https://pollostellos.web.app',
-      'https://pollos-tellos-api.onrender.com',
+      'https://pollostellos.com.ar',
+      'https://www.pollostellos.com.ar',
     ],
     credentials: true,
   };
