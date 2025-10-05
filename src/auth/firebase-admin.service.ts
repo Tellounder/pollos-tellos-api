@@ -9,7 +9,29 @@ export class FirebaseAdminService {
   private app: App | null = null;
   private auth: Auth | null = null;
 
-  constructor(private readonly configService: ConfigService) {}
+  private readonly projectId: string | undefined;
+  private readonly clientEmail: string | undefined;
+  private readonly privateKey: string | undefined;
+
+  constructor(private readonly configService: ConfigService) {
+    const serviceAccountJson = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
+
+    if (serviceAccountJson) {
+      try {
+        const parsed = JSON.parse(serviceAccountJson);
+        this.projectId = parsed.project_id;
+        this.clientEmail = parsed.client_email;
+        this.privateKey = typeof parsed.private_key === 'string' ? parsed.private_key.replace(/\\n/g, '\n') : undefined;
+      } catch (error) {
+        this.logger.error('Invalid FIREBASE_SERVICE_ACCOUNT_JSON', error instanceof Error ? error.message : error);
+      }
+    } else {
+      this.projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
+      this.clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
+      const rawKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
+      this.privateKey = rawKey ? rawKey.replace(/\\n/g, '\n') : undefined;
+    }
+  }
 
   private getFirebaseApp(): App {
     if (this.app) {
@@ -21,26 +43,20 @@ export class FirebaseAdminService {
       return this.app;
     }
 
-    const serviceAccountJson = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_JSON');
-    const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID');
-
     try {
-      if (serviceAccountJson) {
-        const parsed = JSON.parse(serviceAccountJson);
-        const privateKey = typeof parsed.private_key === 'string' ? parsed.private_key.replace(/\\n/g, '\n') : undefined;
-
+      if (this.privateKey && this.clientEmail) {
         this.app = initializeApp({
           credential: cert({
-            projectId: parsed.project_id ?? projectId,
-            clientEmail: parsed.client_email,
-            privateKey,
+            projectId: this.projectId,
+            clientEmail: this.clientEmail,
+            privateKey: this.privateKey,
           }),
-          projectId: parsed.project_id ?? projectId,
+          projectId: this.projectId,
         });
       } else {
         this.app = initializeApp({
           credential: applicationDefault(),
-          projectId: projectId ?? undefined,
+          projectId: this.projectId ?? undefined,
         });
       }
     } catch (error) {
