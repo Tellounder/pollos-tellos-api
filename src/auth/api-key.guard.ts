@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -15,6 +16,7 @@ import { FirebaseAdminService } from './firebase-admin.service';
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly allowedKeys: Set<string>;
+  private readonly logger = new Logger(ApiKeyGuard.name);
 
   constructor(
     private readonly configService: ConfigService,
@@ -99,7 +101,9 @@ export class ApiKeyGuard implements CanActivate {
         claims: decoded,
       };
     } catch (error) {
-      throw new ForbiddenException('Token inválido o expirado.');
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Firebase token rejected: ${message}`);
+      throw new ForbiddenException('Token inválido o expirado. Volvé a iniciar sesión.');
     }
   }
 }
