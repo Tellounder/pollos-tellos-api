@@ -110,7 +110,14 @@ export class UsersService {
         discountCodesOwned: {
           include: { redemptions: true },
         },
-        discountRedemptions: true,
+        discountRedemptions: {
+          include: {
+            code: true,
+            order: {
+              select: { id: true, number: true, placedAt: true },
+            },
+          },
+        },
       },
     });
 

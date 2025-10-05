@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
+import { OrdersModule } from './orders/orders.module';
 import { ApiKeyGuard } from './auth/api-key.guard';
 
 @Module({
@@ -12,6 +13,7 @@ import { ApiKeyGuard } from './auth/api-key.guard';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     UsersModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [
