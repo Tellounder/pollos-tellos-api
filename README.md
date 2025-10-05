@@ -17,10 +17,13 @@ Backend monolito construido con [NestJS](https://nestjs.com/) y [Prisma](https:/
 1. Crear y exportar las variables de entorno necesarias (o editar `.env`). Ejemplo:
    ```env
    DATABASE_URL="postgresql://usuario:password@localhost:5432/pollos_tellos?schema=public"
-   API_KEY="tu-clave-super-secreta"
+   FIREBASE_SERVICE_ACCOUNT_JSON='{ "project_id": "pollostellos", "client_email": "...", "private_key": "-----BEGIN PRIVATE KEY-----\\n..." }'
+   ADMIN_EMAILS=pollostellos.arg@gmail.com,otro.admin@pollostellos.com
    ```
-   Podés definir varias claves separadas por comas con `API_KEYS="clave1,clave2"`. Las peticiones al backend deben incluir
-   la cabecera `x-api-key` o un `Authorization: Bearer <clave>` válido.
+   La API valida tokens de Firebase (ID tokens). Cada request autenticada debe incluir
+   `Authorization: Bearer <ID_TOKEN>` obtenido desde el client SDK. De forma opcional
+   podés mantener claves internas (`API_KEY` / `API_KEYS`) para integraciones server-to-server;
+   nunca las expongas en el frontend público.
 2. Instalar dependencias:
    ```bash
    npm install
@@ -53,7 +56,7 @@ Backend monolito construido con [NestJS](https://nestjs.com/) y [Prisma](https:/
 ## Próximos pasos sugeridos
 - Definir migraciones iniciales (`npm run prisma:migrate`).
 - Crear módulos adicionales (`orders`, `inventory`, `referrals`, `analytics`) reutilizando `PrismaService`.
-- Agregar Guards/strategies para autenticación (por ejemplo JWT basado en Firebase UID).
+- Monitorear y auditar la capa de autenticación (rotación de claves, métricas de tokens revocados).
 - Implementar endpoints que registren el intento de pedido antes de abrir WhatsApp, y el seguimiento del “bonus” (JackTello's).
 - Conectar tu frontend (`Pollos_Tellos`) apuntando a esta API (`/users`, `/users/:id/engagement`, etc.).
 

@@ -1,14 +1,26 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import type { RequestUser } from './auth-user.interface';
+import { FirebaseAdminService } from './firebase-admin.service';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   private readonly allowedKeys: Set<string>;
 
-  constructor(private readonly configService: ConfigService, private readonly reflector: Reflector) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly reflector: Reflector,
+    private readonly firebaseAdminService: FirebaseAdminService,
+  ) {
     const rawKeys =
       this.configService.get<string>('API_KEYS') ??
       this.configService.get<string>('API_KEY') ??
@@ -24,7 +36,7 @@ export class ApiKeyGuard implements CanActivate {
     );
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -34,18 +46,21 @@ export class ApiKeyGuard implements CanActivate {
       return true;
     }
 
-    if (this.allowedKeys.size === 0) {
-      throw new UnauthorizedException('API key no configurada en el servidor');
+    const request = context.switchToHttp().getRequest<Request & { authUser?: RequestUser }>();
+
+    const firebaseUser = await this.tryAuthorizeWithToken(request);
+    if (firebaseUser) {
+      request.authUser = firebaseUser;
+      return true;
     }
 
-    const request = context.switchToHttp().getRequest<Request>();
     const providedKey = this.extractKey(request);
-
-    if (!providedKey || !this.allowedKeys.has(providedKey)) {
-      throw new UnauthorizedException('API key inválida o ausente');
+    if (providedKey && this.allowedKeys.has(providedKey)) {
+      request.authUser = { strategy: 'apiKey' };
+      return true;
     }
 
-    return true;
+    throw new UnauthorizedException('Autenticación requerida.');
   }
 
   private extractKey(request: Request): string | null {
@@ -58,11 +73,33 @@ export class ApiKeyGuard implements CanActivate {
       return headerKey[0];
     }
 
+    return null;
+  }
+
+  private async tryAuthorizeWithToken(
+    request: Request,
+  ): Promise<RequestUser | null> {
     const authHeader = request.headers.authorization;
-    if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
-      return authHeader.slice(7).trim();
+    if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) {
+      return null;
     }
 
-    return null;
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const decoded = await this.firebaseAdminService.verifyIdToken(token);
+      return {
+        strategy: 'firebase',
+        uid: decoded.uid,
+        email: decoded.email ?? null,
+        name: decoded.name ?? null,
+        claims: decoded,
+      };
+    } catch (error) {
+      throw new ForbiddenException('Token inválido o expirado.');
+    }
   }
 }

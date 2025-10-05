@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, AuthProvider, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from '../dto/create-user.dto';
@@ -196,6 +196,23 @@ export class UsersService {
       where: { id },
       data: { isActive: false },
     });
+  }
+
+  async ensureBelongsToEmail(id: string, email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuario ${id} no encontrado.`);
+    }
+
+    if (user.email.toLowerCase() !== email.toLowerCase()) {
+      throw new ForbiddenException('No tenés permiso para operar con esta cuenta.');
+    }
+
+    return user;
   }
 
   async registerPurchase(id: string) {

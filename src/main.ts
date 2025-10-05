@@ -25,6 +25,8 @@ async function bootstrap() {
       'https://www.pollostellos.com.ar',
     ],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
+    exposedHeaders: ['Content-Type'],
   };
   app.enableCors(corsOptions);
 
