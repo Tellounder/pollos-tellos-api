@@ -17,15 +17,16 @@ async function bootstrap() {
     }),
   );
   const corsOptions: CorsOptions = {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'https://pollostellos.web.app',
-      'https://pollostellos.com.ar',
-      'https://www.pollostellos.com.ar',
-    ],
+    origin: (requestOrigin, callback) => callback(null, requestOrigin ?? true),
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'authorization',
+      'X-Api-Key',
+      'x-api-key',
+    ],
     exposedHeaders: ['Content-Type'],
   };
   app.enableCors(corsOptions);

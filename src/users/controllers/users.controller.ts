@@ -12,9 +12,11 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ShareCouponStatus } from '@prisma/client';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
+import { CreateUserDiscountDto } from '../dto/create-user-discount.dto';
 import { UsersService } from '../services/users.service';
 import { AuthUser } from '../../auth/auth-user.decorator';
 import type { RequestUser } from '../../auth/auth-user.interface';
@@ -83,6 +85,54 @@ export class UsersController {
   @Post(':id/purchases')
   registerPurchase(@Param('id') id: string, @AuthUser() authUser?: RequestUser | null) {
     return this.ensureUserAccess(id, authUser, () => this.usersService.registerPurchase(id));
+  }
+
+  @Get('share-coupons')
+  listShareCouponsGlobal(
+    @Query('status') statusRaw?: string,
+    @AuthUser() authUser?: RequestUser | null,
+  ) {
+    this.authzService.ensureAdmin(authUser ?? null);
+    const status = statusRaw ? statusRaw.toUpperCase() : undefined;
+    return this.usersService.listShareCouponsGlobal(status as ShareCouponStatus | undefined);
+  }
+
+  @Get(':id/share-coupons')
+  listShareCoupons(@Param('id') id: string, @AuthUser() authUser?: RequestUser | null) {
+    return this.ensureUserAccess(id, authUser, () => this.usersService.listShareCoupons(id));
+  }
+
+  @Post(':id/share-coupons/issue')
+  issueShareCoupons(@Param('id') id: string, @AuthUser() authUser?: RequestUser | null) {
+    return this.ensureUserAccess(id, authUser, () => this.usersService.ensureMonthlyShareCoupons(id));
+  }
+
+  @Post(':id/share-coupons/:code/activate')
+  activateShareCoupon(
+    @Param('id') id: string,
+    @Param('code') code: string,
+    @AuthUser() authUser?: RequestUser | null,
+  ) {
+    return this.ensureUserAccess(id, authUser, () => this.usersService.activateShareCoupon(id, code));
+  }
+
+  @Post(':id/discounts')
+  grantDiscount(
+    @Param('id') id: string,
+    @Body() payload: CreateUserDiscountDto,
+    @AuthUser() authUser?: RequestUser | null,
+  ) {
+    this.authzService.ensureAdmin(authUser ?? null);
+    return this.usersService.grantDiscount(id, payload);
+  }
+
+  @Get('discount-codes')
+  listDiscountCodes(
+    @Query('activeOnly', new DefaultValuePipe(false), ParseBoolPipe) activeOnly: boolean,
+    @AuthUser() authUser?: RequestUser | null,
+  ) {
+    this.authzService.ensureAdmin(authUser ?? null);
+    return this.usersService.listDiscountCodes({ activeOnly });
   }
 
   @Delete(':id')

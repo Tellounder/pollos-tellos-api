@@ -1,9 +1,19 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, AuthProvider, OrderStatus } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Prisma,
+  AuthProvider,
+  OrderStatus,
+  ShareCoupon,
+  ShareCouponStatus,
+  DiscountType,
+  DiscountScope,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { UpdateProfileDto } from '../dto/update-profile.dto';
+import { CreateUserDiscountDto } from '../dto/create-user-discount.dto';
 
 export type UsersQuery = {
   skip?: number;
@@ -79,6 +89,9 @@ export class UsersService {
   }
 
   async findOne(id: string) {
+    await this.ensureExists(id);
+    await this.ensureMonthlyShareCoupons(id).catch(() => undefined);
+
     const user = await this.prisma.user.findUnique({
       where: { id },
       include: {
@@ -117,6 +130,9 @@ export class UsersService {
               select: { id: true, number: true, placedAt: true },
             },
           },
+        },
+        shareCoupons: {
+          orderBy: [{ year: 'desc' }, { month: 'desc' }, { createdAt: 'asc' }],
         },
       },
     });
@@ -285,10 +301,181 @@ export class UsersService {
     };
   }
 
+  async listShareCoupons(id: string) {
+    await this.ensureExists(id);
+    return this.prisma.shareCoupon.findMany({
+      where: { userId: id },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async activateShareCoupon(id: string, code: string) {
+    await this.ensureExists(id);
+    const coupon = await this.prisma.shareCoupon.findFirst({
+      where: { userId: id, code },
+    });
+
+    if (!coupon) {
+      throw new NotFoundException(`Cupón ${code} no encontrado.`);
+    }
+
+    if (coupon.status === ShareCouponStatus.ACTIVATED || coupon.status === ShareCouponStatus.REDEEMED) {
+      return coupon;
+    }
+
+    return this.prisma.shareCoupon.update({
+      where: { id: coupon.id },
+      data: {
+        status: ShareCouponStatus.ACTIVATED,
+        activatedAt: new Date(),
+      },
+    });
+  }
+
+  async ensureMonthlyShareCoupons(userId: string, referenceDate = new Date()) {
+    await this.ensureExists(userId);
+    const month = referenceDate.getMonth() + 1;
+    const year = referenceDate.getFullYear();
+
+    const existing = await this.prisma.shareCoupon.findMany({
+      where: { userId, month, year },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (existing.length >= 3) {
+      return existing;
+    }
+
+    const needed = 3 - existing.length;
+    const created: ShareCoupon[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < needed; i += 1) {
+        let code: string | null = null;
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          const candidate = this.buildShareCouponCode(year, month);
+          const conflict = await tx.shareCoupon.findUnique({ where: { code: candidate } });
+          if (!conflict) {
+            code = candidate;
+            break;
+          }
+        }
+
+        if (!code) {
+          throw new Error('No se pudo generar un código de referidos único.');
+        }
+
+        const coupon = await tx.shareCoupon.create({
+          data: {
+            userId,
+            code,
+            month,
+            year,
+            status: ShareCouponStatus.ISSUED,
+          },
+        });
+        created.push(coupon);
+      }
+    });
+
+    return [...existing, ...created];
+  }
+
+  async listShareCouponsGlobal(status?: ShareCouponStatus) {
+    const where: Prisma.ShareCouponWhereInput = {};
+    if (status) {
+      where.status = status;
+    }
+
+    return this.prisma.shareCoupon.findMany({
+      where,
+      orderBy: [{ year: 'desc' }, { month: 'desc' }, { createdAt: 'desc' }],
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+  }
+
+  async grantDiscount(id: string, payload: CreateUserDiscountDto) {
+    await this.ensureExists(id);
+
+    if (!payload.value || payload.value <= 0) {
+      throw new BadRequestException('El valor del descuento debe ser mayor a 0.');
+    }
+
+    const code = this.buildDiscountCode();
+    const expiresAt = payload.expiresAt ? new Date(payload.expiresAt) : undefined;
+
+    return this.prisma.discountCode.create({
+      data: {
+        code,
+        type: DiscountType.COMPENSATION,
+        scope: DiscountScope.ORDER,
+        value: new Prisma.Decimal(payload.value),
+        percentage: null,
+        maxRedemptions: 1,
+        expiresAt: expiresAt ?? null,
+        metadata: payload.label ? { label: payload.label } : undefined,
+        owner: { connect: { id } },
+      },
+      include: { redemptions: true },
+    });
+  }
+
+  async listDiscountCodes({ activeOnly = false }: { activeOnly?: boolean } = {}) {
+    const where: Prisma.DiscountCodeWhereInput = {};
+
+    if (activeOnly) {
+      const now = new Date();
+      where.AND = [
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+        },
+        {
+          redemptions: {
+            none: {},
+          },
+        },
+      ];
+    }
+
+    return this.prisma.discountCode.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+          },
+        },
+        redemptions: true,
+      },
+    });
+  }
+
   private async ensureExists(id: string) {
     const exists = await this.prisma.user.count({ where: { id } });
     if (!exists) {
       throw new NotFoundException(`Usuario ${id} no encontrado.`);
     }
+  }
+
+  private buildShareCouponCode(year: number, month: number) {
+    const suffix = randomBytes(3).toString('hex').toUpperCase();
+    const yearPart = (year % 100).toString().padStart(2, '0');
+    const monthPart = month.toString().padStart(2, '0');
+    return `TELLO${yearPart}${monthPart}-${suffix}`;
+  }
+
+  private buildDiscountCode() {
+    return `TELLOS-${randomBytes(3).toString('hex').toUpperCase()}`;
   }
 }

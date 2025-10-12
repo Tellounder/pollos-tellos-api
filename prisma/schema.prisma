@@ -16,6 +16,7 @@ enum AuthProvider {
 enum OrderStatus {
   DRAFT
   PENDING
+  PREPARING
   CONFIRMED
   CANCELLED
   FULFILLED
@@ -31,6 +32,12 @@ enum DiscountType {
 enum DiscountScope {
   ORDER
   ITEM
+}
+
+enum ShareCouponStatus {
+  ISSUED
+  ACTIVATED
+  REDEEMED
 }
 
 enum StockMovementType {
@@ -77,6 +84,7 @@ model User {
   loyaltyEvents        LoyaltyEvent[]
   purchases            Purchase[]
   inventoryCounts      InventoryCount[]      @relation("InventoryCounter")
+  shareCoupons         ShareCoupon[]
 }
 
 model Purchase {
@@ -127,11 +135,29 @@ model Order {
   updatedAt          DateTime    @updatedAt
 
   items               OrderItem[]
+  itemSnapshots       OrderItemSnapshot[]
   payments            PaymentRecord[]
   discountRedemptions DiscountRedemption[]
   stockMovements      StockMovement[]
   whatsappEvents      WhatsappInteraction[]
   loyaltyEvents       LoyaltyEvent[]
+  messages            OrderMessage[]
+}
+
+model OrderItemSnapshot {
+  id                String   @id @default(uuid())
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId           String
+  productKey        String?
+  label             String
+  quantity          Int      @default(0)
+  unitPrice         Decimal  @default(0) @db.Decimal(10, 2)
+  originalUnitPrice Decimal? @db.Decimal(10, 2)
+  discountValue     Decimal? @db.Decimal(10, 2)
+  lineTotal         Decimal  @default(0) @db.Decimal(10, 2)
+  side              String?
+  type              String?
+  createdAt         DateTime @default(now())
 }
 
 model OrderItem {
@@ -205,6 +231,17 @@ model DiscountRedemption {
   metadata     Json?
 }
 
+model OrderMessage {
+  id         String   @id @default(uuid())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId    String
+  authorType String
+  authorId   String?
+  payload    Json
+  createdAt  DateTime @default(now())
+  readAt     DateTime?
+}
+
 model ReferralProfile {
   id          String   @id @default(uuid())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -252,6 +289,21 @@ model WhatsappInteraction {
   event     String
   payload   Json?
   createdAt DateTime @default(now())
+}
+
+model ShareCoupon {
+  id          String            @id @default(uuid())
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  code        String            @unique
+  month       Int
+  year        Int
+  status      ShareCouponStatus @default(ISSUED)
+  metadata    Json?
+  activatedAt DateTime?
+  redeemedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 model LoyaltyEvent {

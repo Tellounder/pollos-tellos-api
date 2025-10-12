@@ -24,6 +24,14 @@ class CreateOrderItemDto {
   @IsNumber()
   unitPrice!: number;
 
+  @IsOptional()
+  @IsNumber()
+  originalUnitPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  discountValue?: number;
+
   @IsNumber()
   lineTotal!: number;
 
