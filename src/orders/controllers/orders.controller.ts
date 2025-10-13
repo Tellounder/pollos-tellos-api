@@ -87,6 +87,12 @@ export class OrdersController {
     return this.ordersService.prepare(id);
   }
 
+  @Patch(':id/fulfill')
+  fulfill(@Param('id') id: string, @AuthUser() authUser?: RequestUser | null) {
+    this.authzService.ensureAdmin(authUser ?? null);
+    return this.ordersService.fulfill(id);
+  }
+
   @Patch(':id/cancel')
   cancel(
     @Param('id') id: string,

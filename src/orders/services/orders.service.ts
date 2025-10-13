@@ -18,6 +18,8 @@ type OrderSelect = {
   createdAt: true;
   updatedAt: true;
   placedAt: true;
+  preparingAt: true;
+  fulfilledAt: true;
   confirmedAt: true;
   cancelledAt: true;
   cancellationReason: true;
@@ -55,6 +57,7 @@ export class OrdersService {
     OrderStatus.PENDING,
     OrderStatus.PREPARING,
     OrderStatus.CONFIRMED,
+    OrderStatus.FULFILLED,
   ];
 
   private readonly baseSelect: OrderSelect = {
@@ -70,6 +73,8 @@ export class OrdersService {
     createdAt: true,
     updatedAt: true,
     placedAt: true,
+    preparingAt: true,
+    fulfilledAt: true,
     confirmedAt: true,
     cancelledAt: true,
     cancellationReason: true,
@@ -230,6 +235,7 @@ export class OrdersService {
       data: {
         status: OrderStatus.CONFIRMED,
         confirmedAt: new Date(),
+        preparingAt: order.preparingAt ?? order.placedAt ?? new Date(),
         cancelledAt: null,
         cancellationReason: null,
       },
@@ -258,6 +264,37 @@ export class OrdersService {
       where: { id },
       data: {
         status: OrderStatus.PREPARING,
+        preparingAt: order.preparingAt ?? new Date(),
+        cancelledAt: null,
+        cancellationReason: null,
+      },
+      select: this.baseSelect,
+    });
+
+    return this.mapOrder(updated);
+  }
+
+
+  async fulfill(id: string) {
+    const order = await this.getOrderOrThrow(id);
+
+    if (order.status === OrderStatus.CANCELLED) {
+      throw new BadRequestException('No se puede completar un pedido cancelado.');
+    }
+
+    if (order.status === OrderStatus.DRAFT || order.status === OrderStatus.PENDING) {
+      throw new BadRequestException('El pedido debe estar en preparación o confirmado antes de completarse.');
+    }
+
+    if (order.status === OrderStatus.FULFILLED) {
+      return this.mapOrder(order);
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: {
+        status: OrderStatus.FULFILLED,
+        fulfilledAt: new Date(),
         cancelledAt: null,
         cancellationReason: null,
       },

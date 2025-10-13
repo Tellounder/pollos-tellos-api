@@ -15,6 +15,11 @@ ADD COLUMN "originalUnitPrice" DECIMAL(10,2),
 ADD COLUMN "discountValue" DECIMAL(10,2);
 
 -- CreateTable
+ALTER TABLE "public"."Order"
+ADD COLUMN "preparingAt" TIMESTAMP(3),
+ADD COLUMN "fulfilledAt" TIMESTAMP(3);
+
+-- CreateTable
 CREATE TABLE IF NOT EXISTS "public"."OrderMessage" (
     "id" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,

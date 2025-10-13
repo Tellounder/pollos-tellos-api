@@ -128,6 +128,8 @@ model Order {
   whatsappLink       String?
   placedAt           DateTime?   @default(now())
   confirmedAt        DateTime?
+  preparingAt        DateTime?
+  fulfilledAt        DateTime?
   cancelledAt        DateTime?
   cancellationReason String?
   metadata           Json?
