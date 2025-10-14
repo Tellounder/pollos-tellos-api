@@ -50,6 +50,11 @@ export class ApiKeyGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<Request & { authUser?: RequestUser }>();
 
+    // Allow preflight requests to pass without authentication so that CORS works as expected
+    if (request.method === 'OPTIONS') {
+      return true;
+    }
+
     const firebaseUser = await this.tryAuthorizeWithToken(request);
     if (firebaseUser) {
       request.authUser = firebaseUser;
