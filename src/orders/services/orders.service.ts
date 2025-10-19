@@ -98,22 +98,56 @@ export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateOrderDto) {
-    const totalNet = dto.totalNet ?? dto.totalGross;
-    const discountTotal = dto.discountTotal ?? 0;
-
-    const metadata = this.buildMetadata(dto);
-
+    const metadata = this.buildMetadata(dto) as Record<string, unknown>;
     const normalizedItems = this.buildNormalizedItems(metadata as OrderPayload['metadata']);
 
     const orderId = await this.prisma.$transaction(async (tx) => {
+      const gross = new Prisma.Decimal(dto.totalGross);
+      let net = dto.totalNet !== undefined ? new Prisma.Decimal(dto.totalNet) : gross;
+      let discountTotalDecimal = dto.discountTotal !== undefined
+        ? new Prisma.Decimal(dto.discountTotal)
+        : new Prisma.Decimal(0);
+
+      let appliedDiscount: {
+        codeId: string;
+        code: string;
+        amount: Prisma.Decimal;
+        metadata: Record<string, unknown> | null;
+        label: string | null;
+      } | null = null;
+
+      if (dto.discountCode) {
+        if (!dto.userId) {
+          throw new BadRequestException('Necesitás iniciar sesión para usar un código de descuento.');
+        }
+
+        appliedDiscount = await this.validateDiscountCode(tx, dto.userId, dto.discountCode, gross);
+
+        discountTotalDecimal = discountTotalDecimal.plus(appliedDiscount.amount);
+        if (discountTotalDecimal.gt(gross)) {
+          discountTotalDecimal = gross;
+        }
+
+        net = gross.minus(discountTotalDecimal);
+        if (net.isNegative()) {
+          net = new Prisma.Decimal(0);
+        }
+
+        metadata.appliedDiscount = {
+          code: appliedDiscount.code,
+          amount: Number(appliedDiscount.amount),
+          label: appliedDiscount.label,
+        } satisfies Record<string, unknown>;
+      }
+
       const created = await tx.order.create({
         data: {
           status: OrderStatus.PENDING,
           channel: 'web',
           user: dto.userId ? { connect: { id: dto.userId } } : undefined,
-          totalGross: new Prisma.Decimal(dto.totalGross),
-          totalNet: new Prisma.Decimal(totalNet),
-          discountTotal: new Prisma.Decimal(discountTotal),
+          totalGross: gross,
+          totalNet: net,
+          discountTotal: discountTotalDecimal,
           note: dto.notes,
           whatsappLink: dto.whatsappLink,
           metadata: metadata as Prisma.InputJsonValue,
@@ -144,6 +178,25 @@ export class OrdersService {
             side: item.side,
             type: item.type,
           })),
+        });
+      }
+
+      if (appliedDiscount) {
+        const redemptionMetadata =
+          appliedDiscount.metadata === null
+            ? Prisma.JsonNull
+            : appliedDiscount.metadata !== undefined
+            ? (appliedDiscount.metadata as Prisma.InputJsonValue)
+            : undefined;
+
+        await tx.discountRedemption.create({
+          data: {
+            codeId: appliedDiscount.codeId,
+            userId: dto.userId,
+            orderId: created.id,
+            valueApplied: appliedDiscount.amount,
+            ...(redemptionMetadata !== undefined ? { metadata: redemptionMetadata } : {}),
+          },
         });
       }
 
@@ -470,6 +523,69 @@ export class OrdersService {
       notes: dto.notes,
       extra: dto.metadata,
     } satisfies Record<string, unknown>;
+  }
+
+  private async validateDiscountCode(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    rawCode: string,
+    orderTotal: Prisma.Decimal,
+  ) {
+    const codeValue = rawCode.trim().toUpperCase();
+    if (!codeValue) {
+      throw new BadRequestException('El código de descuento es inválido.');
+    }
+
+    const discount = await tx.discountCode.findFirst({
+      where: {
+        code: codeValue,
+        ownerId: userId,
+      },
+      include: {
+        _count: {
+          select: { redemptions: true },
+        },
+      },
+    });
+
+    if (!discount) {
+      throw new BadRequestException('No encontramos ese código de descuento.');
+    }
+
+    const now = new Date();
+    if (discount.startsAt && discount.startsAt > now) {
+      throw new BadRequestException('Ese código todavía no está disponible.');
+    }
+    if (discount.expiresAt && discount.expiresAt < now) {
+      throw new BadRequestException('Ese código ya expiró.');
+    }
+    if (discount._count.redemptions >= discount.maxRedemptions) {
+      throw new BadRequestException('Ese código ya fue utilizado.');
+    }
+
+    const grossValue = orderTotal.toNumber();
+    const percentageValue = discount.percentage ? Number(discount.percentage) : null;
+    let amountNumber = percentageValue
+      ? grossValue * (percentageValue / 100)
+      : Number(discount.value);
+
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      throw new BadRequestException('El descuento no es válido.');
+    }
+
+    amountNumber = Math.min(amountNumber, grossValue);
+
+    const amountDecimal = new Prisma.Decimal(amountNumber.toFixed(2));
+
+    return {
+      codeId: discount.id,
+      code: discount.code,
+      amount: amountDecimal,
+      metadata: discount.metadata as Record<string, unknown> | null,
+      label: typeof discount.metadata === 'object' && discount.metadata !== null
+        ? (discount.metadata as Record<string, unknown>).label?.toString?.() ?? null
+        : null,
+    } as const;
   }
 
   private mapOrder(order: OrderPayload) {
