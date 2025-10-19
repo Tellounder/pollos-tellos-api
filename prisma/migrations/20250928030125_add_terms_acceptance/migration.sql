@@ -1,0 +1,2 @@
+-- Re-created so Prisma encuentre la migración aplicada en Supabase.
+-- El campo "termsAcceptedAt" ya existe, por eso no hacemos nada acá.

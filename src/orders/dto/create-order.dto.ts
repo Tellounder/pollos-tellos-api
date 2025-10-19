@@ -66,6 +66,10 @@ export class CreateOrderDto {
   @IsString()
   discountCode?: string;
 
+  @IsOptional()
+  @IsString()
+  shareCode?: string;
+
   @IsString()
   @IsNotEmpty()
   customerName!: string;

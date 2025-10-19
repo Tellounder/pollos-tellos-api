@@ -85,6 +85,7 @@ model User {
   purchases            Purchase[]
   inventoryCounts      InventoryCount[]      @relation("InventoryCounter")
   shareCoupons         ShareCoupon[]
+  shareCouponsRedeemed ShareCoupon[] @relation("ShareCouponRedeemer")
 }
 
 model Purchase {
@@ -144,6 +145,7 @@ model Order {
   whatsappEvents      WhatsappInteraction[]
   loyaltyEvents       LoyaltyEvent[]
   messages            OrderMessage[]
+  shareCouponsRedeemed ShareCoupon[]
 }
 
 model OrderItemSnapshot {
@@ -304,6 +306,11 @@ model ShareCoupon {
   metadata    Json?
   activatedAt DateTime?
   redeemedAt  DateTime?
+  redeemedByEmail String?
+  redeemedByUser  User?              @relation("ShareCouponRedeemer", fields: [redeemedByUserId], references: [id], onDelete: SetNull)
+  redeemedByUserId String?
+  redeemedOrder   Order?             @relation(fields: [redeemedOrderId], references: [id], onDelete: SetNull)
+  redeemedOrderId String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 }

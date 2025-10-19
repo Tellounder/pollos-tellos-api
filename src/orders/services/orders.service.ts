@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { OrderStatus, OrderMessage as OrderMessageModel, Prisma } from '@prisma/client';
+import {
+  OrderStatus,
+  OrderMessage as OrderMessageModel,
+  Prisma,
+  ShareCouponStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderStatusDto } from '../dto/update-order-status.dto';
@@ -59,6 +64,7 @@ export class OrdersService {
     OrderStatus.CONFIRMED,
     OrderStatus.FULFILLED,
   ];
+  private static readonly SHARE_COUPON_PERCENTAGE = 5;
 
   private readonly baseSelect: OrderSelect = {
     id: true,
@@ -115,6 +121,14 @@ export class OrdersService {
         metadata: Record<string, unknown> | null;
         label: string | null;
       } | null = null;
+      let shareCoupon: {
+        id: string;
+        code: string;
+        ownerId: string;
+        amount: Prisma.Decimal;
+        ownerEmail?: string | null;
+        ownerDisplayName?: string | null;
+      } | null = null;
 
       if (dto.discountCode) {
         if (!dto.userId) {
@@ -137,6 +151,32 @@ export class OrdersService {
           code: appliedDiscount.code,
           amount: Number(appliedDiscount.amount),
           label: appliedDiscount.label,
+        } satisfies Record<string, unknown>;
+      }
+
+      if (dto.shareCode) {
+        shareCoupon = await this.validateShareCoupon(tx, dto.shareCode, gross, {
+          userId: dto.userId,
+          customerEmail: dto.customerEmail,
+        });
+
+        discountTotalDecimal = discountTotalDecimal.plus(shareCoupon.amount);
+        if (discountTotalDecimal.gt(gross)) {
+          discountTotalDecimal = gross;
+        }
+
+        net = gross.minus(discountTotalDecimal);
+        if (net.isNegative()) {
+          net = new Prisma.Decimal(0);
+        }
+
+        metadata.appliedShareCoupon = {
+          code: shareCoupon.code,
+          amount: Number(shareCoupon.amount),
+          ownerId: shareCoupon.ownerId,
+          ownerEmail: shareCoupon.ownerEmail ?? null,
+          ownerDisplayName: shareCoupon.ownerDisplayName ?? null,
+          percentage: OrdersService.SHARE_COUPON_PERCENTAGE,
         } satisfies Record<string, unknown>;
       }
 
@@ -196,6 +236,19 @@ export class OrdersService {
             orderId: created.id,
             valueApplied: appliedDiscount.amount,
             ...(redemptionMetadata !== undefined ? { metadata: redemptionMetadata } : {}),
+          },
+        });
+      }
+
+      if (shareCoupon) {
+        await tx.shareCoupon.update({
+          where: { id: shareCoupon.id },
+          data: {
+            status: ShareCouponStatus.REDEEMED,
+            redeemedAt: new Date(),
+            redeemedByEmail: dto.customerEmail,
+            redeemedByUserId: dto.userId ?? null,
+            redeemedOrderId: created.id,
           },
         });
       }
@@ -585,6 +638,66 @@ export class OrdersService {
       label: typeof discount.metadata === 'object' && discount.metadata !== null
         ? (discount.metadata as Record<string, unknown>).label?.toString?.() ?? null
         : null,
+    } as const;
+  }
+
+  private async validateShareCoupon(
+    tx: Prisma.TransactionClient,
+    rawCode: string,
+    orderTotal: Prisma.Decimal,
+    context: { userId?: string; customerEmail?: string | null },
+  ) {
+    const codeValue = rawCode.trim().toUpperCase();
+    if (!codeValue) {
+      throw new BadRequestException('El código compartido es inválido.');
+    }
+
+    const coupon = await tx.shareCoupon.findUnique({
+      where: { code: codeValue },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    if (!coupon) {
+      throw new BadRequestException('Ese código no existe.');
+    }
+
+    if (coupon.status !== ShareCouponStatus.ACTIVATED || coupon.redeemedAt) {
+      throw new BadRequestException('Ese código ya fue utilizado.');
+    }
+
+    if (context.userId && coupon.userId === context.userId) {
+      throw new BadRequestException('No podés canjear tu propio código.');
+    }
+
+    const normalizedEmail = context.customerEmail?.trim().toLowerCase();
+    if (normalizedEmail && coupon.user.email && coupon.user.email.toLowerCase() === normalizedEmail) {
+      throw new BadRequestException('No podés canjear tu propio código.');
+    }
+
+    const grossValue = orderTotal.toNumber();
+    if (!Number.isFinite(grossValue) || grossValue <= 0) {
+      throw new BadRequestException('No se puede aplicar el código en un pedido vacío.');
+    }
+
+    const percentage = OrdersService.SHARE_COUPON_PERCENTAGE;
+    const amountNumber = Math.min(grossValue * (percentage / 100), grossValue);
+    const amountDecimal = new Prisma.Decimal(amountNumber.toFixed(2));
+
+    return {
+      id: coupon.id,
+      code: coupon.code,
+      ownerId: coupon.userId,
+      ownerEmail: coupon.user.email,
+      ownerDisplayName: coupon.user.displayName,
+      amount: amountDecimal,
     } as const;
   }
 
