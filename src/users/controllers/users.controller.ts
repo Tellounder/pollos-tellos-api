@@ -53,6 +53,25 @@ export class UsersController {
     return this.usersService.findAll({ skip, take, search, activeOnly });
   }
 
+  @Get('discount-codes')
+  listDiscountCodes(
+    @Query('activeOnly', new DefaultValuePipe(false), ParseBoolPipe) activeOnly: boolean,
+    @AuthUser() authUser?: RequestUser | null,
+  ) {
+    this.authzService.ensureAdmin(authUser ?? null);
+    return this.usersService.listDiscountCodes({ activeOnly });
+  }
+
+  @Get('share-coupons')
+  listShareCouponsGlobal(
+    @Query('status') statusRaw?: string,
+    @AuthUser() authUser?: RequestUser | null,
+  ) {
+    this.authzService.ensureAdmin(authUser ?? null);
+    const status = statusRaw ? statusRaw.toUpperCase() : undefined;
+    return this.usersService.listShareCouponsGlobal(status as ShareCouponStatus | undefined);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @AuthUser() authUser?: RequestUser | null) {
     return this.ensureUserAccess(id, authUser, () => this.usersService.findOne(id));
@@ -87,16 +106,6 @@ export class UsersController {
     return this.ensureUserAccess(id, authUser, () => this.usersService.registerPurchase(id));
   }
 
-  @Get('share-coupons')
-  listShareCouponsGlobal(
-    @Query('status') statusRaw?: string,
-    @AuthUser() authUser?: RequestUser | null,
-  ) {
-    this.authzService.ensureAdmin(authUser ?? null);
-    const status = statusRaw ? statusRaw.toUpperCase() : undefined;
-    return this.usersService.listShareCouponsGlobal(status as ShareCouponStatus | undefined);
-  }
-
   @Get(':id/share-coupons')
   listShareCoupons(@Param('id') id: string, @AuthUser() authUser?: RequestUser | null) {
     return this.ensureUserAccess(id, authUser, () => this.usersService.listShareCoupons(id));
@@ -124,15 +133,6 @@ export class UsersController {
   ) {
     this.authzService.ensureAdmin(authUser ?? null);
     return this.usersService.grantDiscount(id, payload);
-  }
-
-  @Get('discount-codes')
-  listDiscountCodes(
-    @Query('activeOnly', new DefaultValuePipe(false), ParseBoolPipe) activeOnly: boolean,
-    @AuthUser() authUser?: RequestUser | null,
-  ) {
-    this.authzService.ensureAdmin(authUser ?? null);
-    return this.usersService.listDiscountCodes({ activeOnly });
   }
 
   @Delete(':id')
