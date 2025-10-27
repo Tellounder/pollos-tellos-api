@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { OrdersModule } from './orders/orders.module';
 import { ApiKeyGuard } from './auth/api-key.guard';
 import { AuthModule } from './auth/auth.module';
+import { MenuModule } from './menu/menu.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
     AuthModule,
     UsersModule,
     OrdersModule,
+    MenuModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,2 +1,7 @@
--- Re-created so Prisma encuentre la migración aplicada en Supabase.
--- El campo "termsAcceptedAt" ya existe, por eso no hacemos nada acá.
+-- accepted terms timestamp
+DO $$ BEGIN
+  ALTER TABLE "User"
+  ADD COLUMN "termsAcceptedAt" TIMESTAMP(3);
+EXCEPTION
+  WHEN duplicate_column THEN NULL;
+END $$;

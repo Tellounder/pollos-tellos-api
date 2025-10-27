@@ -198,6 +198,69 @@ model Product {
 
   orderItems       OrderItem[]
   recipeComponents RecipeComponent[]
+  menuItems        MenuItem[]
+}
+
+model MenuCategory {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String?
+  heroTitle   String?
+  heroSubtitle String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items MenuItem[]
+
+  @@index([sortOrder])
+}
+
+model MenuItem {
+  id            String        @id @default(uuid())
+  category      MenuCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId    String
+  product       Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId     String?
+  slug          String        @unique
+  name          String
+  shortName     String?
+  description   String?
+  imageUrl      String?
+  badgeLabel    String?
+  highlight     Boolean       @default(false)
+  basePrice     Decimal       @db.Decimal(10, 2)
+  originalPrice Decimal?      @db.Decimal(10, 2)
+  isLocked      Boolean       @default(false)
+  requiresSide  Boolean       @default(false)
+  isShareable   Boolean       @default(true)
+  isVisible     Boolean       @default(true)
+  sortOrder     Int           @default(0)
+  metadata      Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  options MenuItemOption[]
+
+  @@index([categoryId, sortOrder])
+  @@index([isVisible, sortOrder])
+}
+
+model MenuItemOption {
+  id            String   @id @default(uuid())
+  item          MenuItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemId        String
+  label         String
+  description   String?
+  priceModifier Decimal? @db.Decimal(10, 2)
+  sortOrder     Int      @default(0)
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([itemId, sortOrder])
 }
 
 model DiscountCode {
