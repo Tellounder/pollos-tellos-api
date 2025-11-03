@@ -10,7 +10,7 @@ export class AuthzService {
     const raw =
       this.configService.get<string>('ADMIN_EMAILS') ??
       this.configService.get<string>('ADMIN_EMAIL') ??
-      'pollostellos.arg@gmail.com';
+      'pollostellos.arg@gmail.com,casamariana32@gmail.com';
 
     this.adminEmails = new Set(
       raw
