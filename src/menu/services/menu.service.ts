@@ -84,9 +84,8 @@ export class MenuService {
 
   async archiveCategory(id: string) {
     await this.findCategoryOrThrow(id);
-    return this.prisma.menuCategory.update({
+    return this.prisma.menuCategory.delete({
       where: { id },
-      data: { isActive: false },
     });
   }
 
