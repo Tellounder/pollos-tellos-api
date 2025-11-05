@@ -1,31 +1,36 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createTransport, Transporter } from 'nodemailer';
-import type SMTPTransport from 'nodemailer/lib/smtp-transport';
+import fetch from 'node-fetch';
 import { SendOrderConfirmationDto } from './dto/order-confirmation.dto';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly transporter: Transporter<SMTPTransport.SentMessageInfo> | null;
+  private readonly apiKey: string | null;
   private readonly fromAddress: string;
+  private readonly replyTo: string[] | null;
   private readonly bcc: string[] | null;
-  private readonly enabled: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    const host = this.configService.get<string>('MAIL_SMTP_HOST') ?? process.env.MAIL_SMTP_HOST;
-    const portValue = this.configService.get<string>('MAIL_SMTP_PORT') ?? process.env.MAIL_SMTP_PORT;
-    const user = this.configService.get<string>('MAIL_SMTP_USER') ?? process.env.MAIL_SMTP_USER;
-    const pass = this.configService.get<string>('MAIL_SMTP_PASS') ?? process.env.MAIL_SMTP_PASS;
-    const secureValue =
-      this.configService.get<string>('MAIL_SMTP_SECURE') ?? process.env.MAIL_SMTP_SECURE;
-    const secure = secureValue ? secureValue === 'true' || secureValue === '1' : undefined;
-    const port = portValue ? Number(portValue) : undefined;
+    this.apiKey =
+      this.configService.get<string>('RESEND_API_KEY') ??
+      process.env.RESEND_API_KEY ??
+      null;
 
     this.fromAddress =
-      this.configService.get<string>('MAIL_FROM') ??
-      process.env.MAIL_FROM ??
-      'Pollos Tello’s <no-reply@pollostellos.com>';
+      this.configService.get<string>('RESEND_FROM') ??
+      process.env.RESEND_FROM ??
+      'Pollos Tello <onboarding@resend.dev>';
+
+    const replyToRaw =
+      this.configService.get<string>('RESEND_REPLY_TO') ??
+      process.env.RESEND_REPLY_TO ??
+      'pollostellos.arg@gmail.com';
+    const replyToList = replyToRaw
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    this.replyTo = replyToList.length > 0 ? replyToList : null;
 
     const bccRaw =
       this.configService.get<string>('MAIL_BCC') ?? process.env.MAIL_BCC ?? '';
@@ -34,29 +39,19 @@ export class NotificationsService {
       .map((value) => value.trim())
       .filter((value) => value.length > 0);
     this.bcc = bccList.length > 0 ? bccList : null;
-
-    if (!host || !port) {
-      this.logger.warn(
-        'SMTP no configurado (MAIL_SMTP_HOST/MAIL_SMTP_PORT). Los correos quedarán en modo simulación.',
-      );
-      this.transporter = null;
-      this.enabled = false;
-      return;
-    }
-
-    this.transporter = createTransport({
-      host,
-      port,
-      secure: secure ?? port === 465,
-      auth: user && pass ? { user, pass } : undefined,
-    });
-    this.enabled = true;
   }
 
   async sendOrderConfirmation(dto: SendOrderConfirmationDto) {
     const to = dto.customer?.email?.trim();
     if (!to) {
       throw new BadRequestException('El pedido no incluye una dirección de email del cliente.');
+    }
+
+    if (!this.apiKey) {
+      this.logger.warn(
+        `RESEND_API_KEY no configurada. Simulando envío de correo a ${to}.`,
+      );
+      return { delivered: false, simulated: true };
     }
 
     const subject =
@@ -71,32 +66,51 @@ export class NotificationsService {
       dto.template?.text ??
       this.buildTextFallback(dto);
 
-    if (!this.enabled || !this.transporter) {
-      this.logger.log(
-        `Correo de confirmación omitido (modo simulación) para ${to}: ${subject}`,
-      );
-      return { delivered: false, simulated: true };
-    }
-
-    const mailOptions = {
+    const payload: Record<string, unknown> = {
       from: this.fromAddress,
-      to,
-      bcc: this.bcc ?? undefined,
+      to: [to],
       subject,
       html,
       text,
     };
 
     try {
-      const info = await this.transporter.sendMail(mailOptions);
+      if (this.replyTo?.length) {
+        payload.reply_to = this.replyTo;
+      }
+      if (this.bcc?.length) {
+        payload.bcc = this.bcc;
+      }
+
+      const response = await fetch('https://api.resend.com/v1/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = (await response.json()) as { id?: string; message?: string | null } | null;
+
+      if (!response.ok) {
+        const errorMessage = data?.message ?? `Status ${response.status}`;
+        this.logger.error(
+          `Resend respondió con error al enviar el correo a ${to}: ${errorMessage}`,
+        );
+        throw new Error(errorMessage);
+      }
+
       this.logger.log(
-        `Correo de confirmación enviado a ${to} (messageId=${info.messageId}).`,
+        `Correo de confirmación enviado a ${to} (id=${data?.id ?? 'sin-id'}).`,
       );
-      return { delivered: true, messageId: info.messageId };
+      return { delivered: true, messageId: data?.id ?? null };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Fallo al enviar el correo de confirmación: ${message}`);
-      throw error;
+      this.logger.error(
+        `Fallo al enviar el correo de confirmación a ${to}: ${message}`,
+      );
+      throw error instanceof Error ? error : new Error(message);
     }
   }
 
