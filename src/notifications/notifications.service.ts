@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import fetch from 'node-fetch';
+import { Resend } from 'resend';
 import { SendOrderConfirmationDto } from './dto/order-confirmation.dto';
 
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
+  private readonly resend: Resend | null;
   private readonly apiKey: string | null;
   private readonly fromAddress: string;
   private readonly replyTo: string[] | null;
@@ -16,6 +17,8 @@ export class NotificationsService {
       this.configService.get<string>('RESEND_API_KEY') ??
       process.env.RESEND_API_KEY ??
       null;
+
+    this.resend = this.apiKey ? new Resend(this.apiKey) : null;
 
     this.fromAddress =
       this.configService.get<string>('RESEND_FROM') ??
@@ -47,7 +50,7 @@ export class NotificationsService {
       throw new BadRequestException('El pedido no incluye una dirección de email del cliente.');
     }
 
-    if (!this.apiKey) {
+    if (!this.apiKey || !this.resend) {
       this.logger.warn(
         `RESEND_API_KEY no configurada. Simulando envío de correo a ${to}.`,
       );
@@ -66,39 +69,37 @@ export class NotificationsService {
       dto.template?.text ??
       this.buildTextFallback(dto);
 
-    const payload: Record<string, unknown> = {
-      from: this.fromAddress,
-      to: [to],
-      subject,
-      html,
-      text,
-    };
-
     try {
-      if (this.replyTo?.length) {
-        payload.reply_to = this.replyTo;
-      }
-      if (this.bcc?.length) {
-        payload.bcc = this.bcc;
-      }
+      const replyToValue =
+        !this.replyTo || this.replyTo.length === 0
+          ? undefined
+          : this.replyTo.length === 1
+            ? this.replyTo[0]
+            : this.replyTo;
+      const bccValue =
+        !this.bcc || this.bcc.length === 0
+          ? undefined
+          : this.bcc.length === 1
+            ? this.bcc[0]
+            : this.bcc;
 
-      const response = await fetch('https://api.resend.com/v1/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+      const { data, error } = await this.resend.emails.send({
+        from: this.fromAddress,
+        to,
+        subject,
+        html,
+        text,
+        replyTo: replyToValue,
+        bcc: bccValue,
       });
 
-      const data = (await response.json()) as { id?: string; message?: string | null } | null;
-
-      if (!response.ok) {
-        const errorMessage = data?.message ?? `Status ${response.status}`;
+      if (error) {
+        const messageError =
+          error.message ?? 'Resend respondió con un error desconocido.';
         this.logger.error(
-          `Resend respondió con error al enviar el correo a ${to}: ${errorMessage}`,
+          `Resend respondió con error al enviar el correo a ${to}: ${messageError}`,
         );
-        throw new Error(errorMessage);
+        throw new Error(messageError);
       }
 
       this.logger.log(
