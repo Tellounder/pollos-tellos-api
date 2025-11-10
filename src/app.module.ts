@@ -10,6 +10,7 @@ import { ApiKeyGuard } from './auth/api-key.guard';
 import { AuthModule } from './auth/auth.module';
 import { MenuModule } from './menu/menu.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DesignModule } from './design/design.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     OrdersModule,
     MenuModule,
     NotificationsModule,
+    DesignModule,
   ],
   controllers: [AppController],
   providers: [

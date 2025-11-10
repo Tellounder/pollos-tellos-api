@@ -19,7 +19,7 @@ async function bootstrap() {
   const corsOptions: CorsOptions = {
     origin: (requestOrigin, callback) => callback(null, requestOrigin ?? true),
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',
